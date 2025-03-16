@@ -17,7 +17,7 @@ describe('AppController', () => {
   describe('root', () => {
     it('should return "Hello World!"', () => {
       expect(appController.getHello()).toBe(
-        'CI/CD with GitHub Actions and AWS',
+        'CI/CD with Docker, GitHub Actions, ECR, and EC2',
       );
     });
   });
