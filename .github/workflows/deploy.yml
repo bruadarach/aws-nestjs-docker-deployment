@@ -48,19 +48,35 @@ jobs:
       - name: ECR에 Docker 이미지 Push하기
         run: docker push ${{ steps.login-ecr.outputs.registry }}/linond-server:latest
 
-      - name: SSH로 EC2에 접속하기
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_PRIVATE_KEY }}
-          script_stop: true
-          script: |
-            docker stop linond-server || true
-            docker rm linond-server || true
-            docker pull ${{ steps.login-ecr.outputs.registry }}/linond-server:latest
-            docker run -d --name linond-server -p 3000:3000 ${{ steps.login-ecr.outputs.registry }}/linond-server:latest
+      #=== SSH로 EC2에 직접 접속 안하고 CodeDeploy를 활용해서 S3, ECR, EC2를 연결해서 배포하는 방법 ===#
+      - name: 압축하기
+        run: tar -czvf $GITHUB_SHA.tar.gz appspec.yml scripts #  EC2의 Code deploy agent는 appspec.yml 파일을 실행
 
+      - name: S3에 프로젝트 폴더 업로드하기
+        run: aws s3 cp --region eu-west-2 ./$GITHUB_SHA.tar.gz s3://linond-server/$GITHUB_SHA.tar.gz
+
+      - name: Code Deploy를 활용해 EC2에 프로젝트 코드 배포
+        run: aws deploy create-deployment
+          --application-name linond-server
+          --deployment-config-name CodeDeployDefault.AllAtOnce
+          --deployment-group-name Production
+          --s3-location bucket=linond-server,bundleType=tgz,key=$GITHUB_SHA.tar.gz
+
+      #====== Docker 이미지를 SSH로 EC2에 직접 접속해서 ECR에서 이미지를 받아오는 방법 ======#
+      # - name: SSH로 EC2에 접속하기
+      #   uses: appleboy/ssh-action@v1.0.3
+      #   with:
+      #     host: ${{ secrets.EC2_HOST }}
+      #     username: ${{ secrets.EC2_USERNAME }}
+      #     key: ${{ secrets.EC2_PRIVATE_KEY }}
+      #     script_stop: true
+      #     script: |
+      #       docker stop linond-server || true
+      #       docker rm linond-server || true
+      #       docker pull ${{ steps.login-ecr.outputs.registry }}/linond-server:latest
+      #       docker run -d --name linond-server -p 3000:3000 ${{ steps.login-ecr.outputs.registry }}/linond-server:latest
+
+      #===== CodeDeploy, S3, EC2를 활용해 배포하는 방법 =====#
       # - name: 빌드
       #   run: npm run build
 
