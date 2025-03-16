@@ -21,29 +21,39 @@ jobs:
         run: npm ci
 
       - name: .env 파일 만들기
-        run: |
-          touch .env
-          echo '${{ secrets.ENV }}' >> .env
+        run: echo '${{ secrets.ENV }}' > .env
 
       - name: 테스트 코드 실행
         run: npm run test
 
-      - name: SSH로 EC2에 접속하기
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          ENV: ${{ secrets.ENV }}
+      - name: 빌드
+        run: npm run build
+
+      - name: 압축하기
+        run: tar -czvf project.tar.gz dist .env package.json package-lock.json
+
+      - name: SCP로 EC2에 빌드된 파일 전송하기
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          envs: ENV
+          source: project.tar.gz
+          target: /home/ubuntu/instagram-server/tobe
+
+      - name: SSH로 EC2에 접속하기
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
           script_stop: true
           script: |
-            cd /home/ubuntu/aws-nestjs-cicd-http
-            rm -rf .env
-            git pull origin main
-            echo "$ENV" > .env
+            rm -rf /home/ubuntu/instagram-server/current
+            mkdir /home/ubuntu/instagram-server/current
+            mv /home/ubuntu/instagram-server/tobe/project.tar.gz /home/ubuntu/instagram-server/current/project.tar.gz
+            cd /home/ubuntu/instagram-server/current
+            tar -xvf project.tar.gz
             npm i
-            npm run build
             pm2 kill
             pm2 start dist/main.js --name "backend-server"
